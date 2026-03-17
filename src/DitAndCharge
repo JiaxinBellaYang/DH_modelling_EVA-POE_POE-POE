@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os
+import numpy as np
+import pandas as pd
+from scipy.constants import e as q
+from scipy.optimize import minimize
+
+# ----------------------------
+# Import your physics model (from your first code saved as bulk_SRH.py)
+# ----------------------------
+from bulk_SRH import (
+    surfaceLifetime,
+    intrinsicLifetime,
+    Dig_func,
+    ni_func,
+    create_energy_array,
+    calculate_gaussian_sigma,
+    calculate_srh_lifetime_injection_dependent,
+    Ev, Ec, T,
+    dop_type_bulk,
+    Ndop_emitter, dop_type_emitter,
+    ENERGY_POINTS,
+)
+
+# ----------------------------
+# User / model constants (keep consistent with your plotting script)
+# ----------------------------
+SIGMA0_N = 2.5e-14
+A_N = 80.0
+E0_N = 0.04
+
+SIGMA0_P = 2.8e-16
+A_P = 110.0
+E0_P = -0.15
+
+TAU_N0_BULK = 2e-3
+TAU_P0_BULK = 3.1e-3
+
+Ndop_bulk = 1.5e15  # keep consistent with your dataset wafer
+
+# ----------------------------
+# Dit shape parameters (fixed during fitting)
+# Align with typical Si midgap ~0.56 eV and your bulk_SRH defaults
+# ----------------------------
+E0_g_fixed = 0.56
+sigma_g_fixed = 0.18
+
+# Optional: include band-edge tails (kept OFF by default)
+Dit0_v_fixed = 0.0
+Ev_sigma_fixed = 0.02
+Dit0_c_fixed = 0.0
+Ec_sigma_fixed = 0.02
+
+
+def load_lifetime_excel(path, sheet="RawData", dn_min=1e14):
+    """
+    Load experimental lifetime data and apply basic validity filtering.
+    dn_min helps avoid very low-injection points that can destabilize Q/Dit fitting.
+    """
+    df = pd.read_excel(path, sheet_name=sheet)
+    dn = df["Minority Carrier Density"].to_numpy(dtype=float)
+    tau = df["Tau (sec)"].to_numpy(dtype=float)
+
+    mask = np.isfinite(dn) & np.isfinite(tau) & (dn > 0) & (tau > 0)
+    mask &= (dn >= dn_min)
+    return dn[mask], tau[mask]
+
+
+def precompute_capture_cross_sections():
+    E = create_energy_array(Ev, Ec, ENERGY_POINTS)
+    sigma_n = calculate_gaussian_sigma(E, SIGMA0_N, A_N, E0_N)
+    sigma_p = calculate_gaussian_sigma(E, SIGMA0_P, A_P, E0_P)
+    return E, sigma_n, sigma_p
+
+
+def build_Dit_total(E, Dit0_g, E0_g=E0_g_fixed, sigma_g=sigma_g_fixed):
+    """
+    Build Dit(E) [cm^-2 eV^-1] as sum of optional band-edge tails + midgap Gaussian.
+    Dit0_g is the peak of the midgap Gaussian (typically cm^-2 eV^-1).
+    """
+    # Midgap Gaussian
+    Dit_mid = Dig_func(E, E0_g, Dit0_g, sigma_g)
+
+    # Optional: band-edge terms (kept fixed here)
+    Dit_v = 0.0
+    Dit_c = 0.0
+    if Dit0_v_fixed > 0:
+        Dit_v = Dig_func(E, Ev, Dit0_v_fixed, Ev_sigma_fixed)
+    if Dit0_c_fixed > 0:
+        Dit_c = Dig_func(E, Ec, Dit0_c_fixed, Ec_sigma_fixed)
+
+    return Dit_v + Dit_c + Dit_mid
+
+
+def simulate_tau_eff(dn_array, Qfix_cm2, Dit0_g, E, sigma_n, sigma_p):
+    """
+    Returns tau_eff(dn) in seconds.
+
+    Qfix_cm2: |Q| as number density [cm^-2] (the model uses Q^2, sign not identifiable from lifetime)
+    Dit0_g: midgap Gaussian peak [cm^-2 eV^-1] (assuming Dig_func uses that convention)
+    """
+    ni_b = ni_func(T, Ndop_bulk, dop_type_bulk)
+
+    # Equilibrium concentrations
+    if dop_type_bulk == 1:  # n-type
+        n0 = Ndop_bulk
+        p0 = ni_b**2 / Ndop_bulk
+    else:                  # p-type
+        p0 = Ndop_bulk
+        n0 = ni_b**2 / Ndop_bulk
+
+    Dit_E = build_Dit_total(E, Dit0_g)
+
+    # Convert Q number density to charge density (C/cm^2)
+    qfix_charge = -Qfix_cm2 * q  # sign convention; lifetime fit is insensitive if ns-equation uses Q^2
+
+    tau_eff = np.empty_like(dn_array, dtype=float)
+    for i, dn in enumerate(dn_array):
+        n = n0 + dn
+        p = p0 + dn
+
+        tau_surf = surfaceLifetime(
+            n0, p0, n, p, dn,
+            qfix_charge, T,
+            Ndop_emitter, Ndop_bulk,
+            dop_type_emitter, dop_type_bulk,
+            dn, Dit_E, sigma_n, sigma_p
+        )
+
+        tau_intr = intrinsicLifetime(n0, p0, n, p, dn)
+
+        tau_srh_bulk = calculate_srh_lifetime_injection_dependent(
+            dn, n0, p0, TAU_N0_BULK, TAU_P0_BULK, ni_b
+        )
+
+        inv = 0.0
+        if np.isfinite(tau_surf) and tau_surf > 0:
+            inv += 1.0 / tau_surf
+        if np.isfinite(tau_intr) and tau_intr > 0:
+            inv += 1.0 / tau_intr
+        if np.isfinite(tau_srh_bulk) and tau_srh_bulk > 0:
+            inv += 1.0 / tau_srh_bulk
+
+        tau_eff[i] = 1.0 / inv if inv > 1e-30 else np.inf
+
+    return tau_eff
+
+
+def rmse_log_tau(dn_exp, tau_exp, Qfix_cm2, Dit0_g, E, sigma_n, sigma_p):
+    """
+    RMSE in log-space of lifetime (consistent with your first script).
+    """
+    tau_fit = simulate_tau_eff(dn_exp, Qfix_cm2, Dit0_g, E, sigma_n, sigma_p)
+    err2 = (np.log(tau_fit) - np.log(tau_exp))**2
+    return float(np.sqrt(np.mean(err2)))
+
+
+def fit_one_condition(
+    dn_exp, tau_exp, E, sigma_n, sigma_p,
+    Q_bounds=(1e9, 5e13),
+    Dit_bounds=(1e10, 5e13),
+    n_starts=25,
+    seed=0,
+):
+    """
+    Robust fit of (|Q|, Dit0_g) by minimizing RMSE(log tau).
+    - log10 parameterization
+    - multi-start random search
+    - bounded L-BFGS-B
+    """
+    rng = np.random.default_rng(seed)
+
+    logQ_bounds = (np.log10(Q_bounds[0]), np.log10(Q_bounds[1]))
+    logD_bounds = (np.log10(Dit_bounds[0]), np.log10(Dit_bounds[1]))
+
+    def objective_log(x):
+        logQ, logD = float(x[0]), float(x[1])
+        Qfix_cm2 = 10**logQ
+        Dit0_g = 10**logD
+        return rmse_log_tau(dn_exp, tau_exp, Qfix_cm2, Dit0_g, E, sigma_n, sigma_p)
+
+    # ---- multi-start ----
+    best_val = np.inf
+    best_x0 = None
+    for _ in range(n_starts):
+        x0 = np.array([
+            rng.uniform(*logQ_bounds),
+            rng.uniform(*logD_bounds),
+        ], dtype=float)
+        val = objective_log(x0)
+        if val < best_val:
+            best_val = val
+            best_x0 = x0
+
+    # ---- local bounded optimization ----
+    res = minimize(
+        objective_log,
+        x0=best_x0,
+        method="L-BFGS-B",
+        bounds=[logQ_bounds, logD_bounds],
+        options={"maxiter": 3000, "ftol": 1e-12}
+    )
+
+    logQ_best, logD_best = res.x
+    Q_best = 10**logQ_best
+    Dit_best = 10**logD_best
+    rmse_best = objective_log(res.x)
+
+    # Dit_tot (cm^-2) = integral Dit(E) dE across Ev->Ec
+    Dit_E = build_Dit_total(E, Dit_best)
+    Dit_tot = float(np.trapezoid(Dit_E, E))
+
+    return dict(
+        Q_abs_cm2=Q_best,
+        Dit0g_peak_cm2eV=Dit_best,
+        Dit_tot_cm2=Dit_tot,
+        RMSE_logtau=rmse_best,
+        success=bool(res.success),
+        nit=int(getattr(res, "nit", -1)),
+        message=str(res.message),
+    )
+
+
+def main():
+    data_folder = "data"
+    before_path = os.path.join(data_folder, "W3_ini.xlsx")
+    after_path = os.path.join(data_folder, "W3_UV20h.xlsx")
+
+    dn_b, tau_b = load_lifetime_excel(before_path, dn_min=1e14)
+    dn_a, tau_a = load_lifetime_excel(after_path, dn_min=1e14)
+
+    E, sigma_n, sigma_p = precompute_capture_cross_sections()
+
+    fit_before = fit_one_condition(dn_b, tau_b, E, sigma_n, sigma_p, seed=0)
+    fit_after = fit_one_condition(dn_a, tau_a, E, sigma_n, sigma_p, seed=1)
+
+    table = pd.DataFrame([
+        {"Condition": "Before UV", **fit_before},
+        {"Condition": "After UV", **fit_after},
+    ])
+
+    # Optional: set signed Q based on known stack polarity (e.g., AlOx often negative)
+    Q_SIGN = -1
+    table["Q_signed_cm2"] = Q_SIGN * table["Q_abs_cm2"]
+
+    delta = {
+        "Condition": "Δ (After - Before)",
+        "Q_abs_cm2": fit_after["Q_abs_cm2"] - fit_before["Q_abs_cm2"],
+        "Dit0g_peak_cm2eV": fit_after["Dit0g_peak_cm2eV"] - fit_before["Dit0g_peak_cm2eV"],
+        "Dit_tot_cm2": fit_after["Dit_tot_cm2"] - fit_before["Dit_tot_cm2"],
+        "RMSE_logtau": fit_after["RMSE_logtau"] - fit_before["RMSE_logtau"],
+        "success": "",
+        "nit": "",
+        "message": "",
+        "Q_signed_cm2": "",
+    }
+    table = pd.concat([table, pd.DataFrame([delta])], ignore_index=True)
+
+    pd.set_option("display.float_format", lambda x: f"{x:.3e}")
+    print("\n=== UV Fit Results (Table2-like) ===")
+    print(table)
+
+    out_csv = "uv_fit_table2.csv"
+    table.to_csv(out_csv, index=False)
+    print(f"\nSaved table to: {out_csv}")
+
+
+if __name__ == "__main__":
+    main()
