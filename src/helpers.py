@@ -44,10 +44,13 @@ def equilibrium_concentrations(Ndop, dop_type, ni):
     return n0, p0
 
 
-def effective_lifetime(tau_surf, tau_intr, tau_bulk):
-    """Matthiessen's rule: 1/τ_eff = 1/τ_surf + 1/τ_intr + 1/τ_bulk.
+def effective_lifetime_terms(*taus):
+    """Matthiessen's rule for an arbitrary number of lifetime terms.
 
-    Safely handles infinite or zero lifetimes.
+    1/τ_eff = Σᵢ 1/τᵢ
+
+    Extends effective_lifetime() to any number of terms.  Non-positive or
+    non-finite lifetimes contribute 0 to the sum (treated as no loss).
 
     Returns
     -------
@@ -55,10 +58,24 @@ def effective_lifetime(tau_surf, tau_intr, tau_bulk):
         Effective lifetime (s).
     """
     inv = 0.0
-    for tau in (tau_surf, tau_intr, tau_bulk):
+    for tau in taus:
         if tau > 0 and np.isfinite(tau):
             inv += 1.0 / tau
     return 1.0 / inv if inv > 1e-20 else np.inf
+
+
+def effective_lifetime(tau_surf, tau_intr, tau_bulk):
+    """Matthiessen's rule: 1/τ_eff = 1/τ_surf + 1/τ_intr + 1/τ_bulk.
+
+    Kept for backward compatibility with existing callers.
+    Delegates to effective_lifetime_terms().
+
+    Returns
+    -------
+    tau_eff : float
+        Effective lifetime (s).
+    """
+    return effective_lifetime_terms(tau_surf, tau_intr, tau_bulk)
 
 
 # ============================================================================

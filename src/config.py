@@ -40,8 +40,8 @@ vth_p = 1.688e7 * (T / 300.0) ** 0.5  # cm/s
 # SAMPLE PARAMETERS
 # ============================================================================
 W = 0.014              # Wafer thickness (cm)
-Ndop_bulk = 1.55e15    # Bulk doping concentration (cm^-3)
-Ndop_emitter = 0.0     # Emitter doping (cm^-3)
+Ndop_bulk = 1.55e15    # Bulk doping concentration (cm^-3) 
+Ndop_emitter = 1.0e19     # Emitter doping (cm^-3)
 dop_type_bulk = 1.0    # 1 = n-type, 0 = p-type
 dop_type_emitter = 0.0
 
@@ -51,29 +51,29 @@ dop_type_emitter = 0.0
 # Keep these as default/shared or legacy usage
 SIGMA0_N = 2.5e-14   # Electron prefactor (cm^2)
 A_N = 80.0            # Electron Gaussian width (eV^-2)
-E0_N = 0.04           # Electron peak relative to midgap (eV)
+E0_N = 0.02           # Electron peak relative to midgap (eV)
 
 SIGMA0_P = 2.5e-16   # Hole prefactor (cm^2)
 A_P = 110.0           # Hole Gaussian width (eV^-2)
-E0_P = -0.15          # Hole peak relative to midgap (eV)
+E0_P = -0.17          # Hole peak relative to midgap (eV)
 
 # --- Before UV ---
-SIGMA0_N_BEFORE = 1e-15
-A_N_BEFORE = 80.0
-E0_N_BEFORE = 0.09    # Adjusted to match Schmidt (~0.65eV - 0.56eV)
+# SIGMA0_N_BEFORE = 1e-15
+# A_N_BEFORE = 80.0
+# E0_N_BEFORE = 0.09    # Adjusted to match Schmidt (~0.65eV - 0.56eV)
 
-SIGMA0_P_BEFORE = 4e-17
-A_P_BEFORE = 110.0
-E0_P_BEFORE = -0.16   # Adjusted to match Schmidt (~0.40eV - 0.56eV)
+# SIGMA0_P_BEFORE = 4e-17
+# A_P_BEFORE = 110.0
+# E0_P_BEFORE = -0.16   # Adjusted to match Schmidt (~0.40eV - 0.56eV)
 
 # --- After UV ---
-SIGMA0_N_AFTER = 5e-15
-A_N_AFTER = 80.0
-E0_N_AFTER = 0.09
+# SIGMA0_N_AFTER = 5e-15
+# A_N_AFTER = 80.0
+# E0_N_AFTER = 0.09
 
-SIGMA0_P_AFTER = 4e-16
-A_P_AFTER = 110.0
-E0_P_AFTER = -0.16
+# SIGMA0_P_AFTER = 4e-16
+# A_P_AFTER = 110.0
+# E0_P_AFTER = -0.16
 
 # ============================================================================
 # GAUSSIAN Dit DISTRIBUTION PARAMETERS
@@ -90,7 +90,7 @@ TAU_P0_BULK = 3.1e-3  # Hole SRH lifetime (s)
 # ============================================================================
 # SIMULATION
 # ============================================================================
-ENERGY_POINTS = 10000
+ENERGY_POINTS = 1000
 
 # ============================================================================
 # PLOTTING

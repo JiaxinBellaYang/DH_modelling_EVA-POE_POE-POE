@@ -15,7 +15,7 @@ No matplotlib, no data I/O, no optimisation logic.
 """
 
 import numpy as np
-from scipy.optimize import fsolve
+from scipy.optimize import fsolve, brentq
 from scipy.constants import e as elementary_charge
 
 import config
@@ -336,40 +336,74 @@ def J0sv2_func(X, *params):
 
 def surfaceLifetime(n0, p0, n, p, Delta_n, Qfixi, T_arg,
                     Ndop_emitter, Ndop_bulk_arg, dop_type_emitter, dop_type_bulk_arg,
-                    dn, Dit_tot, sigma_n, sigma_p, return_diagnostics=False):
+                    dn, Dit_tot, sigma_n, sigma_p,
+                    return_diagnostics=False, ns_init=None):
     """Surface recombination lifetime — two-step ns solve.
 
     Workflow
     -------
     1. Coarse search — vectorised evaluation of Eq. (A5) without Q_it
        to find a good initial guess for ns.
+       Skipped when *ns_init* is provided (caller supplies the guess,
+       enabling continuity across injection levels).
     2. Fine solve — scalar fsolve of Eqs. (A5) + (2) including
        self-consistent Q_it.
     3. Compute Us via Eq. (A6) at the solved ns, then:
-          S = Us / Δn,     τ_surface = W / (2·S)
-    """
-    # --- Step 1: Coarse search (without Q_it, fast vectorised) ---
-    params_ns_coarse = (Qfixi, T_arg, Ndop_emitter, Ndop_bulk_arg,
-                        dop_type_emitter, dop_type_bulk_arg, dn)
+          S = Us / Δn,     τ_front = W / S
 
+    Parameters
+    ----------
+    ns_init : float or None
+        If provided and positive, used directly as the fsolve initial
+        guess, bypassing the coarse search.  Pass the ns_solved from
+        the previous injection level to avoid jumping between roots.
+    """
     ni_b_curr = ni_func(T_arg, Ndop_bulk_arg, dop_type_bulk_arg)
     nd0_curr = dop_type_bulk_arg * Ndop_bulk_arg + (1 - dop_type_bulk_arg) * ni_b_curr ** 2 / Ndop_bulk_arg
     nd_curr = nd0_curr + dn
 
-    if Qfixi < 0:
-        ns_search_range = np.logspace(2, np.log10(nd_curr) + 0.1, 10000)
+    if ns_init is not None and ns_init > 0:
+        # --- Skip coarse search: use caller-supplied continuity guess ---
+        ns_guess = ns_init
     else:
-        ns_search_range = np.logspace(np.log10(nd_curr) - 0.1, 21, 10000)
+        # --- Step 1: Coarse search (without Q_it, fast vectorised) ---
+        params_ns_coarse = (Qfixi, T_arg, Ndop_emitter, Ndop_bulk_arg,
+                            dop_type_emitter, dop_type_bulk_arg, dn)
 
-    fzero_values = ns_zero_func(ns_search_range, *params_ns_coarse)
-    fzero_abs = np.abs(fzero_values)
-    ns_guess = lookup(fzero_abs, fzero_abs.min(), ns_search_range)
+        if Qfixi < 0:
+            ns_search_range = np.logspace(-1, np.log10(nd_curr) + 0.1, 10000)
+        else:
+            ns_search_range = np.logspace(np.log10(nd_curr) - 0.1, 21, 10000)
+
+        fzero_values = ns_zero_func(ns_search_range, *params_ns_coarse)
+        fzero_abs = np.abs(fzero_values)
+        ns_guess = lookup(fzero_abs, fzero_abs.min(), ns_search_range)
 
     # --- Step 2: Fine solve with Q_it (scalar, self-consistent) ---
     params_ns_full = (Qfixi, T_arg, Ndop_emitter, Ndop_bulk_arg,
                       dop_type_emitter, dop_type_bulk_arg, dn,
                       Dit_tot, sigma_n, sigma_p)
-    ns_solved = fsolve(ns_zero_func_full, ns_guess, args=params_ns_full)[0]
+
+    # When Dit is large, Q_it shifts the root far from the Q_f-only guess.
+    # Scan 30 points around ns_guess with the FULL equation to find a sign
+    # change, then use brentq (guaranteed convergence) instead of fsolve.
+    _log_lo = max(-3.0, np.log10(max(ns_guess, 1e-3)) - 2.0)
+    _log_hi = min(np.log10(nd_curr) + 0.2, np.log10(max(ns_guess, 1e-3)) + 2.0)
+    _ns_scan = np.logspace(_log_lo, _log_hi, 30)
+    _f_scan  = np.array([ns_zero_func_full(ns_i, *params_ns_full)
+                         for ns_i in _ns_scan])
+    _sc = np.where(np.diff(np.sign(_f_scan)))[0]
+    if len(_sc) > 0:
+        try:
+            ns_solved = brentq(ns_zero_func_full,
+                               _ns_scan[_sc[0]], _ns_scan[_sc[0] + 1],
+                               args=params_ns_full, xtol=1e-10, rtol=1e-8)
+        except Exception:
+            ns_solved = fsolve(ns_zero_func_full, ns_guess,
+                               args=params_ns_full)[0]
+    else:
+        ns_solved = fsolve(ns_zero_func_full, ns_guess,
+                           args=params_ns_full)[0]
     ns_solved = max(ns_solved, 1e-20)
 
     X_j0s = (ns_solved, T_arg, Ndop_emitter, Ndop_bulk_arg, dop_type_emitter, dop_type_bulk_arg, dn, 0)
@@ -385,13 +419,13 @@ def surfaceLifetime(n0, p0, n, p, Delta_n, Qfixi, T_arg,
         S = 0
 
     if S > 1e-10:
-        tau_surface = config.W / (2 * S)
+        tau_front = config.W / S
     else:
-        tau_surface = np.inf
+        tau_front = np.inf
 
     if return_diagnostics:
-        return tau_surface, {"ns": ns_solved, "Phi_s_eV": Phi_s}
-    return tau_surface
+        return tau_front, {"ns": ns_solved, "Phi_s_eV": Phi_s}
+    return tau_front
 
 
 # ============================================================================
@@ -429,3 +463,43 @@ def intrinsicLifetime(n0, p0, n, p, Delta_n):
         tau_intr = np.inf
 
     return tau_intr
+
+# ============================================================================
+# J0 rear LIFETIME 
+# ============================================================================
+def rear_j0_lifetime(J0_rear, n, p, Delta_n, ni_eff, W):
+    """
+    Convert rear-side J0 into an injection-dependent lifetime term.
+
+    Parameters
+    ----------
+    J0_rear : float
+        Rear saturation current density [A/cm^2].
+    n, p : float
+        Total electron and hole concentrations [cm^-3].
+    Delta_n : float
+        Excess carrier density [cm^-3].
+    ni_eff : float
+        Effective intrinsic carrier concentration [cm^-3].
+    W : float
+        Wafer thickness [cm].
+
+    Returns
+    -------
+    tau_rear : float
+        Rear recombination lifetime [s].
+    """
+    if J0_rear <= 0:
+        return np.inf
+
+    recomb_factor = n * p - ni_eff ** 2
+
+    if recomb_factor <= 0 or Delta_n <= 0:
+        return np.inf
+
+    U_rear = J0_rear / (elementary_charge * W) * (recomb_factor / ni_eff ** 2)
+
+    if U_rear <= 0:
+        return np.inf
+
+    return Delta_n / U_rear

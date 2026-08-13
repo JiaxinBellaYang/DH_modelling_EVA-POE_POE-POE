@@ -16,15 +16,12 @@ if script_dir not in sys.path:
     sys.path.insert(0, script_dir)
 
 from config import (
-    SIGMA0_N_BEFORE, A_N_BEFORE, E0_N_BEFORE,
-    SIGMA0_P_BEFORE, A_P_BEFORE, E0_P_BEFORE,
-    SIGMA0_N_AFTER, A_N_AFTER, E0_N_AFTER,
-    SIGMA0_P_AFTER, A_P_AFTER, E0_P_AFTER,
+    SIGMA0_N, SIGMA0_P,
     Ev, Ec, ENERGY_POINTS, lw
 )
 
 from physics import (
-    create_energy_array, calculate_gaussian_sigma
+    create_energy_array,
 )
 
 from scatter_data import (
@@ -37,14 +34,9 @@ def plot_capture_cross_sections():
     
     E_array = create_energy_array(Ev, Ec, ENERGY_POINTS)
     
-    # Calculate sigmas
-    # Before UV
-    sigma_n_before = calculate_gaussian_sigma(E_array, SIGMA0_N_BEFORE, A_N_BEFORE, E0_N_BEFORE)
-    sigma_p_before = calculate_gaussian_sigma(E_array, SIGMA0_P_BEFORE, A_P_BEFORE, E0_P_BEFORE)
-    
-    # After UV
-    sigma_n_after = calculate_gaussian_sigma(E_array, SIGMA0_N_AFTER, A_N_AFTER, E0_N_AFTER)
-    sigma_p_after = calculate_gaussian_sigma(E_array, SIGMA0_P_AFTER, A_P_AFTER, E0_P_AFTER)
+    # Constant capture cross sections
+    sigma_n = np.full_like(E_array, SIGMA0_N)
+    sigma_p = np.full_like(E_array, SIGMA0_P)
     
     # Plot setup
     plt.rcParams["font.family"] = "Arial"
@@ -52,20 +44,11 @@ def plot_capture_cross_sections():
     
     fig, ax = plt.subplots(figsize=(10, 7))
     
-    # Plot Electron Cross Sections
-    # Assuming sigma_n might not change, we plot it carefully.
-    # If they are identical, we might see only one line unless we use styles well.
-    
-    ax.semilogy(E_array, sigma_n_before, color='navy', linestyle='-', linewidth=lw, alpha=0.6,
-                label=r'$\sigma_n$ (Before UV)')
-    ax.semilogy(E_array, sigma_n_after, color='blue', linestyle='--', linewidth=2,
-                label=r'$\sigma_n$ (After)')
-    
-    # Plot Hole Cross Sections
-    ax.semilogy(E_array, sigma_p_before, color='darkred', linestyle='-', linewidth=lw, alpha=0.6,
-                label=r'$\sigma_p$ (Before UV)')
-    ax.semilogy(E_array, sigma_p_after, color='red', linestyle='--', linewidth=2,
-                label=r'$\sigma_p$ (After UV)')
+    # Plot Electron and Hole Cross Sections (constant)
+    ax.semilogy(E_array, sigma_n, color='blue', linestyle='-', linewidth=lw,
+                label=r'$\sigma_n$')
+    ax.semilogy(E_array, sigma_p, color='red', linestyle='-', linewidth=lw,
+                label=r'$\sigma_p$')
     
     # --- Scatter Plots from Literature ---
     # Saint-Cast (Red Square)
