@@ -74,11 +74,6 @@ def load_dh_data(filepath):
             continue
 
         cols = list(candidate.columns)
-        norm_cols = {
-            ''.join(ch.lower() for ch in str(col) if ch.isalnum()): str(col)
-            for col in cols
-        }
-
         dn_candidates = [
             col for col in cols
             if 'mcd' in ''.join(ch.lower() for ch in str(col) if ch.isalnum())
@@ -781,7 +776,7 @@ def main():
     datasets = [
         (
             "DH 0 hr (Before)",
-            os.path.join(data_dir, "1_B_DH0hr.xlsx"),
+            os.path.join(data_dir, "2_B_DH0hr.xlsx"),
             # qf_range upper bound raised to 13.5 — previous run hit the 13.0 ceiling.
             # J0_rear is now a free fit parameter; j0rear_range replaces the fixed value.
             dict(dit_range=(9.0, 12.0), qf_range=(9.0, 13.5),
@@ -790,7 +785,7 @@ def main():
         ),
         (
             "DH 1000 hrs (After)",
-            os.path.join(data_dir, "1_B_DH1000hrs_new.xlsx"),
+            os.path.join(data_dir, "2_B_DH1000hrs_new.xlsx"),
             # After DH the curve typically shows a hump (low tau at low injection,
             # peak at mid injection, drops at high injection).  This requires:
             #   - large negative Qf (surface inversion in n-type)
@@ -907,7 +902,7 @@ def main():
         ax_comp.tick_params(which="both", direction="in", top=True, right=True)
         fig_comp.tight_layout()
         safe_label = label.replace(" ", "_").replace("(", "").replace(")", "")
-        comp_path = os.path.join(figures_dir, f"components_{safe_label}_1B.png")
+        comp_path = os.path.join(figures_dir, f"components_{safe_label}_2B.png")
         fig_comp.savefig(comp_path, dpi=200, bbox_inches="tight")
         plt.close(fig_comp)
         print(f"  Component figure -> {comp_path}")
@@ -938,13 +933,13 @@ def main():
     ax.set_ylim(1e-1, 1e1)
 
     fig.tight_layout()
-    fig_path = os.path.join(figures_dir, "fit_comparison_1B.png")
+    fig_path = os.path.join(figures_dir, "fit_comparison_2B.png")
     fig.savefig(fig_path, dpi=300, bbox_inches="tight")
     print(f"\nFigure saved -> {fig_path}")
 
     # --- Save results to Excel ---
     df_out = pd.DataFrame(fit_results)
-    xl_path = os.path.join(results_dir, "fit_dit_qf_results_1B.xlsx")
+    xl_path = os.path.join(results_dir, "fit_dit_qf_results_2B.xlsx")
     df_out.to_excel(xl_path, index=False)
     print(f"Results saved -> {xl_path}")
 

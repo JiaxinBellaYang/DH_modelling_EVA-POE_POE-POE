@@ -56,9 +56,46 @@ from helpers import equilibrium_concentrations, effective_lifetime_terms, setup_
 # ── data loading ──────────────────────────────────────────────────────────────
 
 def load_dh_data(filepath):
-    df   = pd.read_excel(filepath, sheet_name="Sheet1")
-    dn   = df["MCD_(cm-3)"].values
-    tau  = df["Effective_Lifetime_(s)"].values
+    """Load DH lifetime data from whichever sheet contains the actual MCD/lifetime columns."""
+    xl = pd.ExcelFile(filepath)
+    df = None
+    dn_col = tau_col = None
+
+    for sheet_name in xl.sheet_names:
+        try:
+            candidate = pd.read_excel(filepath, sheet_name=sheet_name)
+        except Exception:
+            continue
+        if candidate is None or candidate.empty:
+            continue
+
+        cols = list(candidate.columns)
+        dn_candidates = [
+            col for col in cols
+            if 'mcd' in ''.join(ch.lower() for ch in str(col) if ch.isalnum())
+        ]
+        tau_candidates = [
+            col for col in cols
+            if 'lifetime' in ''.join(ch.lower() for ch in str(col) if ch.isalnum())
+            or 'tau' in ''.join(ch.lower() for ch in str(col) if ch.isalnum())
+        ]
+
+        if dn_candidates and tau_candidates:
+            dn_col = dn_candidates[0]
+            tau_col = tau_candidates[0]
+            df = candidate
+            break
+
+    if df is None or dn_col is None or tau_col is None:
+        for sheet_name in xl.sheet_names:
+            candidate = pd.read_excel(filepath, sheet_name=sheet_name)
+            raise ValueError(
+                f"No DH lifetime columns found in {filepath}. "
+                f"Available sheets: {xl.sheet_names}. Columns: {candidate.columns.tolist()}"
+            )
+
+    dn = pd.to_numeric(df[dn_col], errors='coerce').to_numpy()
+    tau = pd.to_numeric(df[tau_col], errors='coerce').to_numpy()
     mask = (dn > 0) & (tau > 0) & np.isfinite(dn) & np.isfinite(tau)
     return dn[mask], tau[mask]
 
@@ -290,26 +327,26 @@ def main():
     datasets = [
         dict(
             label        = "DH 0 hr (Before)",
-            path         = os.path.join(data_dir, "1_A_DH0hr.xlsx"),
+            path         = os.path.join(data_dir, "2_B_DH0hr.xlsx"),
             dit_range    = (9.0,  12.0),
             qf_range     = (9.0, 13.5),
             j0rear_range = (-15.0, -13.0),   # matches J0REAR_RANGE_BEFORE
-            n_dit        = 20,
-            n_qf         = 20,
-            n_j0rear     = 10,
+            n_dit        = 30,
+            n_qf         = 30,
+            n_j0rear     = 15,
             e0g          = GAUSS_E0,
             gauss_sigma  = GAUSS_SIGMA,
             color        = "royalblue",
         ),
         dict(
             label        = "DH 1000 hrs (After)",
-            path         = os.path.join(data_dir, "1_A_DH1000hrs.xlsx"),
+            path         = os.path.join(data_dir, "2_B_DH1000hrs_new.xlsx"),
             dit_range    = (9.0,  12.0),
-            qf_range     = (9.0,  13.5),
+            qf_range     = (9.0, 13.5),
             j0rear_range = (-15.0, -13.0),   # matches J0REAR_RANGE_AFTER
-            n_dit        = 20,
-            n_qf         = 20,
-            n_j0rear     = 10,
+            n_dit        = 30,
+            n_qf         = 30,
+            n_j0rear     = 15,
             e0g          = GAUSS_E0,
             gauss_sigma  = GAUSS_SIGMA_AFTER,
             color        = "crimson",
@@ -468,7 +505,7 @@ def main():
         cbar.set_ticks(tick_vals)
         cbar.set_ticklabels([f"{r:.1f}×" for r in tick_ratios if np.log10(r) <= 1.0])
 
-    out_path = os.path.join(out_dir, "landscape_2_combined.png")
+    out_path = os.path.join(out_dir, "landscape_2B_combined.png")
     fig.savefig(out_path, dpi=300, bbox_inches="tight")
     print(f"\nFigure saved → {out_path}")
     plt.show()
