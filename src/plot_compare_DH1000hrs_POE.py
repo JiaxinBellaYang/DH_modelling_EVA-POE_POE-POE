@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DH 1000 hrs comparison — samples 1A, 1B, 2B.
+DH 1000 hrs comparison — samples 1B, 2B, 3B.
 
 Loads best-fit parameters from each sample's Excel results file and plots on
 a single τ_eff vs Δn figure:
@@ -9,7 +9,7 @@ a single τ_eff vs Δn figure:
   · τ_front / J0,front component (dashed line)
 
 Output:
-  figures/fit_dit_qf/compare_DH1000hrs_1A_1B_2B.png
+  figures/fit_dit_qf/compare_DH1000hrs_1B_2B_3B.png
 """
 
 import os
@@ -64,9 +64,9 @@ from helpers import setup_plot_style
 # ============================================================================
 SAMPLES = [
     dict(
-        name="EVA/EVA",
-        data_file="1_A_DH1000hrs.xlsx",
-        results_file="fit_dit_qf_results_1A.xlsx",
+        name="EPE/POE",
+        data_file="3_B_DH1000hrs_new.xlsx",
+        results_file="fit_dit_qf_results_3B.xlsx",
         marker_color="navy",
         line_color="cornflowerblue",
         front_color="lightskyblue",
@@ -194,7 +194,7 @@ def main():
 
     # Leave room at the bottom for the 3-row legend
     fig.tight_layout(rect=[0, 0.14, 1, 1])
-    fig_path = os.path.join(figures_dir, "compare_DH1000hrs_1A_1B_2B.png")
+    fig_path = os.path.join(figures_dir, "compare_DH1000hrs_1B_2B_3B.png")
     fig.savefig(fig_path, dpi=300, bbox_inches="tight")
     print(f"\nFigure saved -> {fig_path}")
 
