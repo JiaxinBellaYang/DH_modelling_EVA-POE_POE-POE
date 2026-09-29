@@ -150,14 +150,14 @@ def ns_zero_func(ns, *params):
     ni_b = ni_func(T_local, Ndop_bulk_arg, dop_type_bulk_arg)
     ni_e = ni_func(T_local, Ndop_surface, dop_type_emitter)
 
-    nd0 = dop_type_bulk_arg * Ndop_bulk_arg + (1 - dop_type_bulk_arg) * ni_b ** 2 / Ndop_bulk_arg
-    pd0 = (1 - dop_type_bulk_arg) * Ndop_bulk_arg + dop_type_bulk_arg * ni_b ** 2 / Ndop_bulk_arg
+    nd0 = dop_type_emitter * Ndop_emitter + (1 - dop_type_emitter) * ni_e ** 2 / Ndop_emitter
+    pd0 = (1 - dop_type_emitter) * Ndop_emitter + dop_type_emitter * ni_e ** 2 / Ndop_emitter
 
     pd = pd0 + dn
     nd = nd0 + dn
 
-    ps = (ni_e ** 2 / ni_b ** 2) * pd * nd / ns
-    Phi_s = -Eth * np.log((ns * ni_b) / (nd * ni_e))
+    ps = pd * nd / ns
+    Phi_s = -Eth * np.log(ns / nd)
 
     fzero = ps - pd + ns - nd + Ndop_surface * Phi_s / Eth - Q ** 2 / (
         2 * elementary_charge * config.eps_Si * Eth
@@ -193,14 +193,14 @@ def ns_zero_func_full(ns, *params):
     ni_b = ni_func(T_local, Ndop_bulk_arg, dop_type_bulk_arg)
     ni_e = ni_func(T_local, Ndop_surface, dop_type_emitter)
 
-    nd0 = dop_type_bulk_arg * Ndop_bulk_arg + (1 - dop_type_bulk_arg) * ni_b ** 2 / Ndop_bulk_arg
-    pd0 = (1 - dop_type_bulk_arg) * Ndop_bulk_arg + dop_type_bulk_arg * ni_b ** 2 / Ndop_bulk_arg
+    nd0 = dop_type_emitter * Ndop_emitter + (1 - dop_type_emitter) * ni_e ** 2 / Ndop_emitter
+    pd0 = (1 - dop_type_emitter) * Ndop_emitter + dop_type_emitter * ni_e ** 2 / Ndop_emitter
 
     pd = pd0 + dn
     nd = nd0 + dn
 
-    ps = (ni_e ** 2 / ni_b ** 2) * pd * nd / ns
-    Phi_s = -Eth * np.log((ns * ni_b) / (nd * ni_e))
+    ps = pd * nd / ns
+    Phi_s = -Eth * np.log(ns / nd)
 
     # --- Compute interface trapped charge Q_it ---
     E = create_energy_array()
@@ -276,13 +276,13 @@ def J0sv2_func(X, *params):
     Ndop_surface = np.abs(Ndop_surface_n - Ndop_surface_p)
     ni_e = ni_func(T_arg, Ndop_surface, dop_type_emitter)
 
-    nd0 = dop_type_bulk_arg * Ndop_bulk_arg + (1 - dop_type_bulk_arg) * ni_b ** 2 / Ndop_bulk_arg
-    pd0 = (1 - dop_type_bulk_arg) * Ndop_bulk_arg + dop_type_bulk_arg * ni_b ** 2 / Ndop_bulk_arg
+    nd0 = dop_type_emitter * Ndop_emitter + (1 - dop_type_emitter) * ni_e ** 2 / Ndop_emitter
+    pd0 = (1 - dop_type_emitter) * Ndop_emitter + dop_type_emitter * ni_e ** 2 / Ndop_emitter
 
     pd = pd0 + dn
     nd = nd0 + dn
 
-    ps = (ni_e ** 2 / ni_b ** 2) * pd * nd / ns_in
+    ps = pd * nd / ns_in
 
     n = nd
     p = pd
@@ -328,7 +328,7 @@ def J0sv2_func(X, *params):
     Sn0 = np.sum((Sn0_tem[1:] + Sn0_tem[:-1]) / 2 * dE)
     Sp0 = np.sum((Sp0_tem[1:] + Sp0_tem[:-1]) / 2 * dE)
 
-    Phi_s = -Eth * np.log((ns_in * ni_b) / (nd * ni_e))
+    Phi_s = -Eth * np.log(ns_in / nd)
 
     J0s_err = 0.0
     return J0s, Uint, ps, ns_in, Phi_s, Sn0, Sp0, J0s_err
@@ -359,7 +359,11 @@ def surfaceLifetime(n0, p0, n, p, Delta_n, Qfixi, T_arg,
         the previous injection level to avoid jumping between roots.
     """
     ni_b_curr = ni_func(T_arg, Ndop_bulk_arg, dop_type_bulk_arg)
-    nd0_curr = dop_type_bulk_arg * Ndop_bulk_arg + (1 - dop_type_bulk_arg) * ni_b_curr ** 2 / Ndop_bulk_arg
+    # Use emitter as the reference quasi-neutral region adjacent to the surface
+    _Ndop_surf_n = dop_type_emitter * Ndop_emitter + dop_type_bulk_arg * Ndop_bulk_arg
+    _Ndop_surf_p = (1 - dop_type_emitter) * Ndop_emitter + (1 - dop_type_bulk_arg) * Ndop_bulk_arg
+    ni_e_curr = ni_func(T_arg, abs(_Ndop_surf_n - _Ndop_surf_p), dop_type_emitter)
+    nd0_curr = dop_type_emitter * Ndop_emitter + (1 - dop_type_emitter) * ni_e_curr ** 2 / Ndop_emitter
     nd_curr = nd0_curr + dn
 
     if ns_init is not None and ns_init > 0:
@@ -371,9 +375,9 @@ def surfaceLifetime(n0, p0, n, p, Delta_n, Qfixi, T_arg,
                             dop_type_emitter, dop_type_bulk_arg, dn)
 
         if Qfixi < 0:
-            ns_search_range = np.logspace(-1, np.log10(nd_curr) + 0.1, 10000)
+            ns_search_range = np.logspace(-1, np.log10(max(nd_curr, 1e-1)) + 0.1, 10000)
         else:
-            ns_search_range = np.logspace(np.log10(nd_curr) - 0.1, 21, 10000)
+            ns_search_range = np.logspace(np.log10(max(nd_curr, 1e-1)) - 0.1, 21, 10000)
 
         fzero_values = ns_zero_func(ns_search_range, *params_ns_coarse)
         fzero_abs = np.abs(fzero_values)
@@ -387,8 +391,9 @@ def surfaceLifetime(n0, p0, n, p, Delta_n, Qfixi, T_arg,
     # When Dit is large, Q_it shifts the root far from the Q_f-only guess.
     # Scan 30 points around ns_guess with the FULL equation to find a sign
     # change, then use brentq (guaranteed convergence) instead of fsolve.
+    # Upper bound: ns cannot exceed Ndop_emitter (full inversion of emitter).
     _log_lo = max(-3.0, np.log10(max(ns_guess, 1e-3)) - 2.0)
-    _log_hi = min(np.log10(nd_curr) + 0.2, np.log10(max(ns_guess, 1e-3)) + 2.0)
+    _log_hi = min(np.log10(Ndop_emitter) + 0.5, np.log10(max(ns_guess, 1e-3)) + 2.0)
     _ns_scan = np.logspace(_log_lo, _log_hi, 30)
     _f_scan  = np.array([ns_zero_func_full(ns_i, *params_ns_full)
                          for ns_i in _ns_scan])

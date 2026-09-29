@@ -60,48 +60,23 @@ from helpers import (
 # ============================================================================
 
 def load_dh_data(filepath):
-    """Load DH lifetime data from whichever sheet contains the actual MCD/lifetime columns."""
+    """Load DH lifetime data with columns MCD_(cm-3) and Effective_Lifetime_(s).
+
+    Tries each sheet in order and returns the first one that contains both
+    required columns (needed because some 3_B files store data in Sheet2).
+    """
     xl = pd.ExcelFile(filepath)
-    df = None
-    dn_col = tau_col = None
-
     for sheet_name in xl.sheet_names:
-        try:
-            candidate = pd.read_excel(filepath, sheet_name=sheet_name)
-        except Exception:
-            continue
-        if candidate is None or candidate.empty:
-            continue
-
-        cols = list(candidate.columns)
-        dn_candidates = [
-            col for col in cols
-            if 'mcd' in ''.join(ch.lower() for ch in str(col) if ch.isalnum())
-        ]
-        tau_candidates = [
-            col for col in cols
-            if 'lifetime' in ''.join(ch.lower() for ch in str(col) if ch.isalnum())
-            or 'tau' in ''.join(ch.lower() for ch in str(col) if ch.isalnum())
-        ]
-
-        if dn_candidates and tau_candidates:
-            dn_col = dn_candidates[0]
-            tau_col = tau_candidates[0]
-            df = candidate
-            break
-
-    if df is None or dn_col is None or tau_col is None:
-        for sheet_name in xl.sheet_names:
-            candidate = pd.read_excel(filepath, sheet_name=sheet_name)
-            raise ValueError(
-                f"No DH lifetime columns found in {filepath}. "
-                f"Available sheets: {xl.sheet_names}. Columns: {candidate.columns.tolist()}"
-            )
-
-    dn = pd.to_numeric(df[dn_col], errors='coerce').to_numpy()
-    tau = pd.to_numeric(df[tau_col], errors='coerce').to_numpy()
-    mask = (dn > 0) & (tau > 0) & np.isfinite(dn) & np.isfinite(tau)
-    return dn[mask], tau[mask]
+        df = pd.read_excel(filepath, sheet_name=sheet_name)
+        if "MCD_(cm-3)" in df.columns and "Effective_Lifetime_(s)" in df.columns:
+            dn  = df["MCD_(cm-3)"].values
+            tau = df["Effective_Lifetime_(s)"].values
+            mask = (dn > 0) & (tau > 0) & np.isfinite(dn) & np.isfinite(tau)
+            return dn[mask], tau[mask]
+    raise ValueError(
+        f"No sheet with 'MCD_(cm-3)' and 'Effective_Lifetime_(s)' found in {filepath}. "
+        f"Available sheets: {xl.sheet_names}"
+    )
 
 
 # ============================================================================
@@ -762,7 +737,7 @@ def main():
     #   Significant degradation: ~1e-13 A/cm² (log10 = -13.0)
     J0REAR_RANGE_BEFORE = (-15, -13)   # <<< log10 bounds for DH 0 hr
     J0REAR_RANGE_AFTER  = (-15, -13)   # <<< log10 bounds for DH 1000 hr
-    N_J0REAR            = 6                # grid points along the J0_rear axis
+    N_J0REAR            = 10                # grid points along the J0_rear axis
     # =========================================================================
 
     # --- Gaussian energy-dependent capture cross sections (from config) ---
@@ -777,10 +752,11 @@ def main():
         (
             "DH 0 hr (Before)",
             os.path.join(data_dir, "3_B_DH0hr.xlsx"),
-            # qf_range upper bound raised to 13.5 — previous run hit the 13.0 ceiling.
+            # qf_range upper bound raised to 14.0 — previous run hit the 13.0 ceiling.
             # J0_rear is now a free fit parameter; j0rear_range replaces the fixed value.
-            dict(dit_range=(9.0, 12.0), qf_range=(9.0, 13.5),
-                 n_dit=15, n_qf=15, n_e0=8,
+            dict(fixed_e0g=GAUSS_E0,
+                 dit_range=(8.0, 12.0), qf_range=(9.0, 14.0),
+                 n_dit=15, n_qf=15,
                  j0rear_range=J0REAR_RANGE_BEFORE, n_j0rear=N_J0REAR),
         ),
         (
@@ -796,7 +772,7 @@ def main():
             # E0_g fixed at 0.56 eV (same as before-DH) for physical comparability.
             # qf_range covers the strong-inversion regime (>1e11.5 cm⁻²).
             dict(fixed_e0g=GAUSS_E0,
-                 dit_range=(9.0, 12.0), qf_range=(9.0, 13.5),
+                 dit_range=(8.0, 12.0), qf_range=(9.0, 14.0),
                  n_dit=15, n_qf=15, n_e0=10,
                  bin_weights=(2.0, 4.0, 2.0),
                  low_inj_anchor=2.0,
@@ -859,7 +835,7 @@ def main():
               f"log10={np.log10(j0rear_opt):.2f})")
         print(f"      E0_g         = {E0_g:.4f} eV  (Dit peak position)")
         print(f"      GAUSS_SIGMA  = {gs_used:.4f} eV  (Dit Gaussian width)")
-        print(f"      RMSE         = {rmse:.4f}  (log scale)")
+        print(f"      RMSE         = {rmse:.2f}  (log scale)")
 
         # --- Component breakdown diagnostic ---
         Qfix_C_diag = Qf_cm2 * elementary_charge

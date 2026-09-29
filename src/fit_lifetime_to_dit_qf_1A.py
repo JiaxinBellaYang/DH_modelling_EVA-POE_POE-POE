@@ -726,7 +726,7 @@ def main():
     #   Significant degradation: ~1e-13 A/cm² (log10 = -13.0)
     J0REAR_RANGE_BEFORE = (-15, -13)   # <<< log10 bounds for DH 0 hr
     J0REAR_RANGE_AFTER  = (-15, -13)   # <<< log10 bounds for DH 1000 hr
-    N_J0REAR            = 6                # grid points along the J0_rear axis
+    N_J0REAR            = 10                # grid points along the J0_rear axis
     # =========================================================================
 
     # --- Gaussian energy-dependent capture cross sections (from config) ---
@@ -741,10 +741,11 @@ def main():
         (
             "DH 0 hr (Before)",
             os.path.join(data_dir, "1_A_DH0hr.xlsx"),
-            # qf_range upper bound raised to 13.5 — previous run hit the 13.0 ceiling.
+            # qf_range upper bound raised to 14.0 — previous run hit the 13.0 ceiling.
             # J0_rear is now a free fit parameter; j0rear_range replaces the fixed value.
-            dict(dit_range=(9.0, 12.0), qf_range=(9.0, 13.5),
-                 n_dit=15, n_qf=15, n_e0=8,
+            dict(fixed_e0g=GAUSS_E0,
+                 dit_range=(8.0, 12.0), qf_range=(9.0, 14.0),
+                 n_dit=15, n_qf=15,
                  j0rear_range=J0REAR_RANGE_BEFORE, n_j0rear=N_J0REAR),
         ),
         (
@@ -760,7 +761,7 @@ def main():
             # E0_g fixed at 0.56 eV (same as before-DH) for physical comparability.
             # qf_range covers the strong-inversion regime (>1e11.5 cm⁻²).
             dict(fixed_e0g=GAUSS_E0,
-                 dit_range=(9.0, 12.0), qf_range=(9.0, 13.5),
+                 dit_range=(8.0, 12.0), qf_range=(9.0, 14.0),
                  n_dit=15, n_qf=15, n_e0=10,
                  bin_weights=(2.0, 4.0, 2.0),
                  low_inj_anchor=2.0,
@@ -823,7 +824,7 @@ def main():
               f"log10={np.log10(j0rear_opt):.2f})")
         print(f"      E0_g         = {E0_g:.4f} eV  (Dit peak position)")
         print(f"      GAUSS_SIGMA  = {gs_used:.4f} eV  (Dit Gaussian width)")
-        print(f"      RMSE         = {rmse:.4f}  (log scale)")
+        print(f"      RMSE         = {rmse:.2f}  (log scale)")
 
         # --- Component breakdown diagnostic ---
         Qfix_C_diag = Qf_cm2 * elementary_charge

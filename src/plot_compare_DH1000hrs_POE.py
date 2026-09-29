@@ -168,7 +168,7 @@ def main():
         if mask.any():
             ax.loglog(dn_s[mask], tf[mask] * 1e3, "--",
                       color=s["front_color"], linewidth=lw * 0.85,
-                      label=r"$\tau_{front}$ ($J_{0,\mathrm{front}}$)" + f" — {name}")
+                      label=r"$\tau_{front}$" + f" — {name}")
 
     # -----------------------------------------------------------------------
     # Figure formatting
